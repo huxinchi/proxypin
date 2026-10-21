@@ -25,13 +25,15 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Setup Android SDK (NDK + CMake)
+      - name: Setup Android SDK with packages
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;26.3.11579264 cmake;3.22.1 platform-tools build-tools;34.0.0'
 
-      - name: Install Android NDK
+      - name: Export NDK env
         run: |
-          sdkmanager "ndk;26.3.11579264" "cmake;3.22.1" "platform-tools" "build-tools;34.0.0"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
 
       - name: Setup Rust (for flutter_rust_bridge)
         uses: dtolnay/rust-toolchain@stable
@@ -47,16 +49,14 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Run codegen (if needed)
+      - name: Run codegen (optional)
         run: |
-          # code_forge / flutter_rust_bridge 的生成步骤，按项目实际情况调整
-          # 如果项目里已有生成好的绑定文件，这一步可以注释掉
           if [ -f "justfile" ]; then
             cargo install just --locked || true
             just generate || true
           fi
 
-      - name: Build APK (debug first, arm64 only)
+      - name: Build APK (debug, arm64 only)
         run: flutter build apk --debug --target-platform android-arm64
 
       - name: Upload APK
@@ -64,3 +64,4 @@ jobs:
         with:
           name: proxypin-apk-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

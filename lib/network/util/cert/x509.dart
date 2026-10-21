@@ -479,7 +479,10 @@ class X509Utils {
   static SubjectPublicKeyInfo _getSubjectPublicKeyInfoFromSeq(ASN1Sequence pubKeySequence) {
     var algSeq = pubKeySequence.elements!.elementAt(0) as ASN1Sequence;
     var algOi = algSeq.elements!.elementAt(0) as ASN1ObjectIdentifier;
-    var asn1AlgParameters = algSeq.elements!.elementAt(1);
+    ASN1Object? asn1AlgParameters;
+    if (algSeq.elements!.length > 1) {
+      asn1AlgParameters = algSeq.elements!.elementAt(1);
+    }
     var algParameters = '';
     var algParametersReadable = '';
     if (asn1AlgParameters is ASN1ObjectIdentifier) {
@@ -488,31 +491,54 @@ class X509Utils {
     }
 
     var pubBitString = pubKeySequence.elements!.elementAt(1) as ASN1BitString;
-    var asn1PubKeyParser = ASN1Parser(pubBitString.stringValues as Uint8List?);
     ASN1Object? next;
     try {
-      next = asn1PubKeyParser.nextObject();
+      var raw = pubBitString.stringValues;
+      if (raw is Uint8List) {
+        next = ASN1Parser(raw).nextObject();
+      }
     } catch (e) {
       // continue
     }
+
     int pubKeyLength;
     int? exponent;
     var pubKeyAsBytes = pubKeySequence.encodedBytes;
-    if (next != null && next is ASN1Sequence) {
-      var s = next;
-      var key = s.elements!.elementAt(0) as ASN1Integer;
+
+    // 只有 RSA 的 SubjectPublicKey 是 SEQUENCE { INTEGER modulus, INTEGER exponent },
+    // 首元素确实是 ASN1Integer 时才能按 RSA 解析。
+    // EC 等算法的 SubjectPublicKey 可能是 OCTET STRING(SEC1 点) 或其他结构,
+    // 直接 `as ASN1Integer` 会抛:
+    //   ASN1OctetString is not a subtype of type 'ASN1Integer' in type cast
+    final bool isRsaStructure = next is ASN1Sequence &&
+        next.elements != null &&
+        next.elements!.isNotEmpty &&
+        next.elements!.elementAt(0) is ASN1Integer;
+
+    if (isRsaStructure) {
+      final s = next as ASN1Sequence;
+      final key = s.elements!.elementAt(0) as ASN1Integer;
       if (s.elements!.length == 2 && s.elements!.elementAt(1) is ASN1Integer) {
-        var asn1Exponent = s.elements!.elementAt(1) as ASN1Integer;
+        final asn1Exponent = s.elements!.elementAt(1) as ASN1Integer;
         exponent = asn1Exponent.integer!.toInt();
       }
       pubKeyLength = key.integer!.bitLength;
-      //pubKeyAsBytes = s.encodedBytes;
     } else {
-      //pubKeyAsBytes = pubBitString.valueBytes;
-      var length = pubBitString.valueBytes!.elementAt(0) == 0
-          ? (pubBitString.valueByteLength! - 1)
-          : pubBitString.valueByteLength;
-      pubKeyLength = length! * 8;
+      // 非 RSA(例如 EC): 按 BIT STRING 有效字节数估算长度
+      final rawBytes = pubBitString.valueBytes;
+      final byteLen = pubBitString.valueByteLength ?? 0;
+      final int effectiveLength;
+      if (rawBytes != null && rawBytes.isNotEmpty && rawBytes[0] == 0) {
+        effectiveLength = byteLen - 1;
+      } else {
+        effectiveLength = byteLen;
+      }
+      pubKeyLength = effectiveLength > 0 ? effectiveLength * 8 : 0;
+
+      // 若解析到非 RSA 的结构, 把其 DER 作为字节信息保存, 便于展示/调试
+      if (next is ASN1Sequence && next.elements != null) {
+        pubKeyAsBytes = next.encodedBytes ?? pubKeyAsBytes;
+      }
     }
 
     var pubKeyThumbprint = CryptoUtils.getHash(pubKeySequence.encodedBytes!, algorithmName: 'SHA-1');

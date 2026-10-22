@@ -54,7 +54,15 @@ jobs:
             cargo install just --locked || true
             just generate || true
           fi
-
+      - name: Fix Signing Config for Debug Build
+        run: |
+          # 匹配 Groovy 或 Kotlin DSL 的 signingConfig 行，替换为 debug
+          find android/app -name "build.gradle*" -exec sed -i \
+            -e 's/signingConfig.*signingConfigs.*release.*/signingConfig = signingConfigs.debug/' \
+            -e 's/signingConfig = signingConfigs.getByName("release")/signingConfig = signingConfigs.getByName("debug")/' \
+            {} +
+          echo "=== 确认签名配置已修改 ==="
+          grep -n "signingConfig" android/app/build.gradle* 2>/dev/null || true
       - name: Build APK (debug, arm64 only)
         run: flutter build apk --debug --target-platform android-arm64
 

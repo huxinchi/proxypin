@@ -45,10 +45,9 @@ jobs:
 
       - name: Flutter doctor
         run: flutter doctor -v
-      - name: Upgrade Gradle Wrapper to 8.14.0
+      - name: Upgrade Gradle Wrapper to 8.14
         run: |
-          sed -i 's#gradle-[0-9.]*-all.zip#gradle-8.14.0-all.zip#' android/gradle/wrapper/gradle-wrapper.properties
-          sed -i 's#https://github.com/gradle/gradle-distributions/releases/download/v[0-9.]*/#https://services.gradle.org/distributions/#' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's|^distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14-all.zip|' android/gradle/wrapper/gradle-wrapper.properties
           cat android/gradle/wrapper/gradle-wrapper.properties
       - name: Get dependencies
         run: flutter pub get
